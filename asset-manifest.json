@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/stock-market-viewer/static/css/main.ea948049.css",
+    "main.js": "/stock-market-viewer/static/js/main.491a2584.js",
+    "static/js/453.720fbc68.chunk.js": "/stock-market-viewer/static/js/453.720fbc68.chunk.js",
+    "index.html": "/stock-market-viewer/index.html",
+    "main.ea948049.css.map": "/stock-market-viewer/static/css/main.ea948049.css.map",
+    "main.491a2584.js.map": "/stock-market-viewer/static/js/main.491a2584.js.map",
+    "453.720fbc68.chunk.js.map": "/stock-market-viewer/static/js/453.720fbc68.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.ea948049.css",
+    "static/js/main.491a2584.js"
+  ]
+}
