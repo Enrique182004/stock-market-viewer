@@ -9,6 +9,8 @@ const StockMarketViewer = () => {
   const [error, setError] = useState(null);
   const [stockInfo, setStockInfo] = useState(null);
 
+  const API_KEY = process.env.REACT_APP_POLYGON_API_KEY;
+
   const stockOptions = [
     { symbol: 'AAPL', name: 'Apple Inc.' },
     { symbol: 'GOOGL', name: 'Alphabet Inc.' },
@@ -20,72 +22,73 @@ const StockMarketViewer = () => {
     { symbol: 'JPM', name: 'JPMorgan Chase & Co.' }
   ];
 
-  const generateMockData = (symbol) => {
-    const basePrice = {
-      'AAPL': 175,
-      'GOOGL': 140,
-      'MSFT': 380,
-      'AMZN': 145,
-      'TSLA': 242,
-      'META': 325,
-      'NVDA': 495,
-      'JPM': 155
-    }[symbol] || 100;
-
-    const data = [];
-    const days = 30;
-    let price = basePrice;
-
-    for (let i = days; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      
-      const change = (Math.random() - 0.5) * basePrice * 0.03;
-      price = Math.max(price + change, basePrice * 0.8);
-      
-      data.push({
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        price: parseFloat(price.toFixed(2)),
-        volume: Math.floor(Math.random() * 50000000) + 10000000
-      });
-    }
-
-    return data;
-  };
-
   const fetchStockData = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Calculate date range (last 30 days)
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+
+      const formatDate = (date) => {
+        return date.toISOString().split('T')[0];
+      };
+
+      // Fetch aggregates (bars) data from Polygon
+      const aggregatesUrl = `https://api.polygon.io/v2/agg/ticker/${selectedStock}/range/1/day/${formatDate(startDate)}/${formatDate(endDate)}?adjusted=true&sort=asc&apiKey=${API_KEY}`;
       
-      const data = generateMockData(selectedStock);
-      setStockData(data);
-      
-      const latestPrice = data[data.length - 1].price;
-      const previousPrice = data[data.length - 2].price;
-      const change = latestPrice - previousPrice;
-      const changePercent = ((change / previousPrice) * 100).toFixed(2);
-      
-      setStockInfo({
-        currentPrice: latestPrice,
-        change: change.toFixed(2),
-        changePercent: changePercent,
-        high: Math.max(...data.map(d => d.price)).toFixed(2),
-        low: Math.min(...data.map(d => d.price)).toFixed(2)
-      });
+      const response = await fetch(aggregatesUrl);
+      const data = await response.json();
+
+      if (data.status === 'ERROR' || !data.results) {
+        throw new Error(data.error || 'Failed to fetch stock data');
+      }
+
+      // Transform Polygon data to our format
+      const transformedData = data.results.map(item => ({
+        date: new Date(item.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        price: parseFloat(item.c.toFixed(2)), // closing price
+        volume: item.v,
+        high: item.h,
+        low: item.l,
+        open: item.o
+      }));
+
+      setStockData(transformedData);
+
+      // Calculate stock info
+      if (transformedData.length >= 2) {
+        const latestPrice = transformedData[transformedData.length - 1].price;
+        const previousPrice = transformedData[transformedData.length - 2].price;
+        const change = latestPrice - previousPrice;
+        const changePercent = ((change / previousPrice) * 100).toFixed(2);
+
+        setStockInfo({
+          currentPrice: latestPrice,
+          change: change.toFixed(2),
+          changePercent: changePercent,
+          high: Math.max(...transformedData.map(d => d.high)).toFixed(2),
+          low: Math.min(...transformedData.map(d => d.low)).toFixed(2)
+        });
+      }
     } catch (err) {
-      setError('Failed to fetch stock data. Please try again.');
+      console.error('Error fetching stock data:', err);
+      setError(err.message || 'Failed to fetch stock data. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-useEffect(() => {
-  fetchStockData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [selectedStock]);
+  useEffect(() => {
+    if (API_KEY) {
+      fetchStockData();
+    } else {
+      setError('API key not found. Please add REACT_APP_POLYGON_API_KEY to your .env file');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStock]);
 
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
@@ -257,8 +260,6 @@ useEffect(() => {
             ) : null}
           </div>
         </div>
-
-        {/* Info Banner */}
       </div>
     </div>
   );
