@@ -1,6 +1,5 @@
 {
   "homepage": "https://Enrique182004.github.io/stock-market-viewer",
-
   "name": "stock-market",
   "version": "0.1.0",
   "private": true,
@@ -12,6 +11,7 @@
     "lucide-react": "^0.545.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-joyride": "^2.9.3",
     "react-scripts": "5.0.1",
     "recharts": "^3.2.1",
     "web-vitals": "^2.1.4"

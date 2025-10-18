@@ -1,268 +1,199 @@
-import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { TrendingUp, RefreshCw, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState } from 'react';
+import { TrendingUp, RefreshCw, ArrowUp, ArrowDown, Briefcase, BarChart3 } from 'lucide-react';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { useStockData } from './hooks/useStockData';
+import { usePortfolio } from './hooks/usePortfolio';
+import LoadingSkeleton from './components/LoadingSkeleton';
+import ThemeToggle from './components/ThemeToggle';
+import StockSelector from './components/StockSelector';
+import StatCard from './components/StatCard';
+import StockChart from './components/StockChart';
+import ComparisonModal from './components/ComparisonModal';
+import PortfolioModal from './components/PortfolioModal';
+import './App.css';
 
 const StockMarketViewer = () => {
-  const [selectedStock, setSelectedStock] = useState('AAPL');
-  const [stockData, setStockData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [stockInfo, setStockInfo] = useState(null);
+  const { theme } = useTheme();
+  const API_KEY = process.env.REACT_APP_ALPHA_VANTAGE_API_KEY;
+  
+  const stock = useStockData(API_KEY);
+  const portfolio = usePortfolio();
+  
+  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
+  const [compareStocks, setCompareStocks] = useState([]);
+  const [compareData, setCompareData] = useState(null);
 
-  const API_KEY = process.env.REACT_APP_POLYGON_API_KEY;
-
-  const stockOptions = [
-    { symbol: 'AAPL', name: 'Apple Inc.' },
-    { symbol: 'GOOGL', name: 'Alphabet Inc.' },
-    { symbol: 'MSFT', name: 'Microsoft Corporation' },
-    { symbol: 'AMZN', name: 'Amazon.com Inc.' },
-    { symbol: 'TSLA', name: 'Tesla Inc.' },
-    { symbol: 'META', name: 'Meta Platforms Inc.' },
-    { symbol: 'NVDA', name: 'NVIDIA Corporation' },
-    { symbol: 'JPM', name: 'JPMorgan Chase & Co.' }
-  ];
-
-  const fetchStockData = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Calculate date range (last 30 days)
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
-
-      const formatDate = (date) => {
-        return date.toISOString().split('T')[0];
-      };
-
-      // Fetch aggregates (bars) data from Polygon
-      const aggregatesUrl = `https://api.polygon.io/v2/agg/ticker/${selectedStock}/range/1/day/${formatDate(startDate)}/${formatDate(endDate)}?adjusted=true&sort=asc&apiKey=${API_KEY}`;
-      
-      const response = await fetch(aggregatesUrl);
-      const data = await response.json();
-
-      if (data.status === 'ERROR' || !data.results) {
-        throw new Error(data.error || 'Failed to fetch stock data');
-      }
-
-      // Transform Polygon data to our format
-      const transformedData = data.results.map(item => ({
-        date: new Date(item.t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        price: parseFloat(item.c.toFixed(2)), // closing price
-        volume: item.v,
-        high: item.h,
-        low: item.l,
-        open: item.o
-      }));
-
-      setStockData(transformedData);
-
-      // Calculate stock info
-      if (transformedData.length >= 2) {
-        const latestPrice = transformedData[transformedData.length - 1].price;
-        const previousPrice = transformedData[transformedData.length - 2].price;
-        const change = latestPrice - previousPrice;
-        const changePercent = ((change / previousPrice) * 100).toFixed(2);
-
-        setStockInfo({
-          currentPrice: latestPrice,
-          change: change.toFixed(2),
-          changePercent: changePercent,
-          high: Math.max(...transformedData.map(d => d.high)).toFixed(2),
-          low: Math.min(...transformedData.map(d => d.low)).toFixed(2)
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching stock data:', err);
-      setError(err.message || 'Failed to fetch stock data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (API_KEY) {
-      fetchStockData();
+  const handleCompare = async (selectedStocks) => {
+    if (selectedStocks.length > 0) {
+      setCompareStocks(selectedStocks);
+      // Fetch data for the first comparison stock
+      const data = await stock.refetch(selectedStocks[0]);
+      setCompareData(data);
     } else {
-      setError('API key not found. Please add REACT_APP_POLYGON_API_KEY to your .env file');
+      setCompareStocks([]);
+      setCompareData(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStock]);
-
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-slate-900 p-4 border-2 border-purple-500 rounded-xl shadow-2xl">
-          <p className="text-sm font-bold text-purple-300 mb-2">{payload[0].payload.date}</p>
-          <p className="text-lg font-bold text-green-400">
-            ${payload[0].value.toFixed(2)}
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            Volume: {(payload[0].payload.volume / 1000000).toFixed(1)}M
-          </p>
-        </div>
-      );
-    }
-    return null;
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 md:p-8">
+    <div className={`min-h-screen p-4 md:p-8 transition-colors ${
+      theme === 'dark'
+        ? 'bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900'
+        : 'bg-gradient-to-br from-gray-50 via-purple-50 to-gray-50'
+    }`}>
       <div className="max-w-7xl mx-auto">
-        {/* Header Card */}
-        <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-xl rounded-3xl shadow-2xl border-2 border-purple-500/30 p-6 md:p-10 mb-8 relative overflow-hidden">
-          {/* Decorative gradient overlay */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-pink-500/10 rounded-full blur-3xl"></div>
-          
+        <div className={`backdrop-blur-xl rounded-3xl shadow-2xl border-2 p-6 md:p-10 mb-8 relative overflow-hidden ${
+          theme === 'dark'
+            ? 'bg-gradient-to-br from-slate-800/95 to-slate-900/95 border-purple-500/30'
+            : 'bg-gradient-to-br from-white/95 to-gray-100/95 border-purple-300'
+        }`}>
           <div className="relative z-10">
-            {/* Title Section */}
+            {/* Header */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
               <div className="flex items-center gap-4">
-                <div className="p-4 bg-gradient-to-br from-purple-600 to-pink-600 rounded-2xl shadow-lg shadow-purple-500/50 transform hover:scale-110 transition-transform">
+                <div className={`p-4 rounded-2xl shadow-lg transform hover:scale-110 transition-transform ${
+                  theme === 'dark'
+                    ? 'bg-gradient-to-br from-purple-600 to-pink-600'
+                    : 'bg-gradient-to-br from-purple-500 to-pink-500'
+                }`}>
                   <TrendingUp className="w-10 h-10 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-4xl md:text-5xl font-black bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
+                  <h1 className={`text-4xl md:text-5xl font-black ${
+                    theme === 'dark'
+                      ? 'bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent'
+                      : 'bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600 bg-clip-text text-transparent'
+                  }`}>
                     Stock Market Viewer
                   </h1>
-                  <p className="text-slate-400 text-sm md:text-base mt-2 font-medium">Real-time market analytics & insights</p>
-                </div>
-              </div>
-              <button
-                onClick={fetchStockData}
-                disabled={loading}
-                className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-2xl hover:from-purple-700 hover:to-pink-700 disabled:from-slate-700 disabled:to-slate-800 transition-all shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 transform hover:scale-105 disabled:scale-100"
-              >
-                <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-                <span className="hidden md:inline">Refresh Data</span>
-              </button>
-            </div>
-
-            {/* Stock Selector */}
-            <div className="mb-8">
-              <label className="block text-sm font-bold text-purple-300 mb-3 uppercase tracking-wider">
-                Select Company
-              </label>
-              <select
-                value={selectedStock}
-                onChange={(e) => setSelectedStock(e.target.value)}
-                className="w-full px-6 py-4 bg-slate-900/80 border-2 border-purple-500/50 text-white font-semibold text-lg rounded-2xl focus:ring-4 focus:ring-purple-500/50 focus:border-purple-400 transition-all shadow-lg backdrop-blur-sm hover:border-purple-400 cursor-pointer"
-              >
-                {stockOptions.map((stock) => (
-                  <option key={stock.symbol} value={stock.symbol} className="bg-slate-900">
-                    {stock.symbol} - {stock.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Stats Grid */}
-            {stockInfo && (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                <div className="bg-gradient-to-br from-purple-600/30 to-purple-900/30 backdrop-blur-md border-2 border-purple-500/50 p-5 rounded-2xl hover:scale-105 transition-transform shadow-xl hover:shadow-purple-500/50">
-                  <p className="text-xs text-purple-300 mb-2 uppercase tracking-wider font-bold">Current Price</p>
-                  <p className="text-3xl font-black text-white">${stockInfo.currentPrice}</p>
-                </div>
-                
-                <div className={`bg-gradient-to-br ${stockInfo.change >= 0 ? 'from-emerald-600/30 to-emerald-900/30 border-emerald-500/50' : 'from-red-600/30 to-red-900/30 border-red-500/50'} backdrop-blur-md border-2 p-5 rounded-2xl hover:scale-105 transition-transform shadow-xl`}>
-                  <p className={`text-xs mb-2 uppercase tracking-wider font-bold ${stockInfo.change >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>Change</p>
-                  <div className="flex items-center gap-2">
-                    {stockInfo.change >= 0 ? <ArrowUp className="w-6 h-6 text-emerald-400" /> : <ArrowDown className="w-6 h-6 text-red-400" />}
-                    <p className={`text-3xl font-black ${stockInfo.change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {stockInfo.change >= 0 ? '+' : ''}{stockInfo.change}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className={`bg-gradient-to-br ${stockInfo.changePercent >= 0 ? 'from-blue-600/30 to-blue-900/30 border-blue-500/50' : 'from-orange-600/30 to-orange-900/30 border-orange-500/50'} backdrop-blur-md border-2 p-5 rounded-2xl hover:scale-105 transition-transform shadow-xl`}>
-                  <p className={`text-xs mb-2 uppercase tracking-wider font-bold ${stockInfo.changePercent >= 0 ? 'text-blue-300' : 'text-orange-300'}`}>Change %</p>
-                  <p className={`text-3xl font-black ${stockInfo.changePercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {stockInfo.changePercent >= 0 ? '+' : ''}{stockInfo.changePercent}%
+                  <p className={`text-sm md:text-base mt-2 font-medium ${
+                    theme === 'dark' ? 'text-slate-400' : 'text-gray-600'
+                  }`}>
+                    Real-time market analytics & insights
                   </p>
                 </div>
-                
-                <div className="bg-gradient-to-br from-pink-600/30 to-pink-900/30 backdrop-blur-md border-2 border-pink-500/50 p-5 rounded-2xl hover:scale-105 transition-transform shadow-xl hover:shadow-pink-500/50">
-                  <p className="text-xs text-pink-300 mb-2 uppercase tracking-wider font-bold">30-Day High</p>
-                  <p className="text-3xl font-black text-white">${stockInfo.high}</p>
-                </div>
-                
-                <div className="bg-gradient-to-br from-amber-600/30 to-amber-900/30 backdrop-blur-md border-2 border-amber-500/50 p-5 rounded-2xl hover:scale-105 transition-transform shadow-xl hover:shadow-amber-500/50">
-                  <p className="text-xs text-amber-300 mb-2 uppercase tracking-wider font-bold">30-Day Low</p>
-                  <p className="text-3xl font-black text-white">${stockInfo.low}</p>
-                </div>
               </div>
-            )}
+              
+              <div className="flex gap-3">
+                <ThemeToggle />
+                <button
+                  onClick={() => setShowComparison(true)}
+                  className={`flex items-center gap-2 px-6 py-4 font-bold rounded-2xl transition-all shadow-lg transform hover:scale-105 ${
+                    theme === 'dark'
+                      ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white hover:from-green-700 hover:to-emerald-700'
+                      : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600'
+                  }`}
+                >
+                  <BarChart3 className="w-5 h-5" />
+                  <span className="hidden md:inline">Compare</span>
+                </button>
+                <button
+                  onClick={() => setShowPortfolio(!showPortfolio)}
+                  className={`flex items-center gap-2 px-6 py-4 font-bold rounded-2xl transition-all shadow-lg transform hover:scale-105 ${
+                    theme === 'dark'
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:from-blue-700 hover:to-cyan-700'
+                      : 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white hover:from-blue-600 hover:to-cyan-600'
+                  }`}
+                >
+                  <Briefcase className="w-5 h-5" />
+                  <span className="hidden md:inline">Portfolio</span>
+                </button>
+                <button
+                  onClick={() => stock.refetch()}
+                  disabled={stock.loading}
+                  className={`flex items-center gap-3 px-6 py-4 font-bold rounded-2xl transition-all shadow-lg transform hover:scale-105 disabled:scale-100 ${
+                    theme === 'dark'
+                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 disabled:from-slate-700 disabled:to-slate-800'
+                      : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 disabled:from-gray-400 disabled:to-gray-500'
+                  }`}
+                >
+                  <RefreshCw className={`w-5 h-5 ${stock.loading ? 'animate-spin' : ''}`} />
+                  <span className="hidden md:inline">Refresh</span>
+                </button>
+              </div>
+            </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-500/20 border-2 border-red-500/60 text-red-300 px-6 py-4 rounded-2xl mb-6 backdrop-blur-sm font-semibold">
-                ⚠️ {error}
-              </div>
-            )}
+            <StockSelector 
+              value={stock.selectedStock}
+              onChange={stock.setSelectedStock}
+              options={stock.stockOptions}
+            />
 
-            {/* Chart Section */}
-            {loading ? (
-              <div className="flex items-center justify-center h-96 bg-slate-900/50 rounded-2xl backdrop-blur-sm border-2 border-purple-500/30">
-                <div className="text-center">
-                  <RefreshCw className="w-20 h-20 text-purple-400 animate-spin mx-auto mb-6" />
-                  <p className="text-slate-300 text-xl font-semibold">Loading stock data...</p>
-                </div>
+            {stock.loading ? (
+              <LoadingSkeleton />
+            ) : stock.error ? (
+              <div className={`border-2 px-6 py-4 rounded-2xl mb-6 backdrop-blur-sm font-semibold ${
+                theme === 'dark'
+                  ? 'bg-red-500/20 border-red-500/60 text-red-300'
+                  : 'bg-red-100 border-red-400 text-red-700'
+              }`}>
+                ⚠️ {stock.error}
               </div>
-            ) : stockData.length > 0 ? (
-              <div className="bg-slate-900/50 backdrop-blur-md border-2 border-purple-500/30 p-6 md:p-8 rounded-2xl shadow-2xl">
-                <h2 className="text-3xl font-black text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text mb-6">
-                  30-Day Price History
-                </h2>
-                <ResponsiveContainer width="100%" height={450}>
-                  <LineChart data={stockData}>
-                    <defs>
-                      <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#475569" opacity={0.3} />
-                    <XAxis 
-                      dataKey="date" 
-                      stroke="#94a3b8"
-                      style={{ fontSize: '13px', fontWeight: 'bold' }}
-                      tick={{ fill: '#cbd5e1' }}
+            ) : (
+              <>
+                {stock.stockInfo && (
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+                    <StatCard label="Current Price" value={`$${stock.stockInfo.currentPrice}`} />
+                    <StatCard 
+                      label="Change" 
+                      value={`${stock.stockInfo.change >= 0 ? '+' : ''}${stock.stockInfo.change}`}
+                      icon={stock.stockInfo.change >= 0 ? ArrowUp : ArrowDown}
+                      trend={stock.stockInfo.change >= 0 ? 'positive' : 'negative'}
                     />
-                    <YAxis 
-                      stroke="#94a3b8"
-                      style={{ fontSize: '13px', fontWeight: 'bold' }}
-                      domain={['auto', 'auto']}
-                      tick={{ fill: '#cbd5e1' }}
+                    <StatCard 
+                      label="Change %" 
+                      value={`${stock.stockInfo.changePercent >= 0 ? '+' : ''}${stock.stockInfo.changePercent}%`}
+                      trend={stock.stockInfo.changePercent >= 0 ? 'positive' : 'negative'}
                     />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend 
-                      wrapperStyle={{ 
-                        paddingTop: '20px',
-                        fontSize: '14px',
-                        fontWeight: 'bold'
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="price" 
-                      stroke="#a855f7" 
-                      strokeWidth={4}
-                      dot={{ fill: '#a855f7', r: 5, strokeWidth: 2, stroke: '#1e293b' }}
-                      activeDot={{ r: 8, fill: '#ec4899', stroke: '#fff', strokeWidth: 2 }}
-                      name="Stock Price ($)"
-                      fill="url(#colorPrice)"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            ) : null}
+                    <StatCard label="30-Day High" value={`$${stock.stockInfo.high}`} />
+                    <StatCard label="30-Day Low" value={`$${stock.stockInfo.low}`} />
+                  </div>
+                )}
+
+                {stock.stockData.length > 0 && (
+                  <StockChart 
+                    data={stock.stockData}
+                    compareData={compareData}
+                    selectedStock={stock.selectedStock}
+                    compareStock={compareStocks[0]}
+                  />
+                )}
+              </>
+            )}
           </div>
         </div>
+
+        {/* Portfolio Modal */}
+        {showPortfolio && (
+          <PortfolioModal 
+            portfolio={portfolio.portfolio}
+            onClose={() => setShowPortfolio(false)}
+            onRemove={portfolio.removeFromPortfolio}
+            stats={portfolio.calculateStats()}
+            onExport={portfolio.exportToCSV}
+          />
+        )}
+
+        {/* Comparison Modal */}
+        <ComparisonModal 
+          show={showComparison}
+          onClose={() => setShowComparison(false)}
+          currentStock={stock.selectedStock}
+          stockOptions={stock.stockOptions}
+          onCompare={handleCompare}
+        />
       </div>
     </div>
   );
 };
 
-export default StockMarketViewer;
+const App = () => {
+  return (
+    <ThemeProvider>
+      <StockMarketViewer />
+    </ThemeProvider>
+  );
+};
+
+export default App;
